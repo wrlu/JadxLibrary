@@ -29,12 +29,12 @@ public class SystemService implements LibraryEntry {
 	private static int binderAnonymousAidlCount = 0;
 
 	static {
-		// romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/Google/shiba_beta_BP22.250103.008");
-		romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/Huawei/BLK-AL00_104.2.0.182");
-		romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/Honor/ELI-AN00_9.0.0.137");
-		romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/OPPO/PJV110_14_SP1A.210812.016_U.1b58e60_1-47857");
-		romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/Vivo/PD2364_AP3A.240905.015.A2_compiler250123205218");
-		romPaths.add("C:/Users/xiaolu/RawContent/FileSystem/Android/Xiaomi/vermeer_AQ3A.240912.001_OS2.0.5.0.VNKCNXM");
+		romPaths.add("D:/Users/xiaolu/Firmware/Android/Google/shiba_beta_BP22.250103.008");
+		// romPaths.add("D:/Users/xiaolu/Firmware/Android/Huawei/BLK-AL00_104.2.0.182");
+		// romPaths.add("D:/Users/xiaolu/Firmware/Android/Honor/ELI-AN00_9.0.0.137");
+		// romPaths.add("D:/Users/xiaolu/Firmware/Android/OPPO/PJV110_15_SP1A.210812.016_U.1c05d7b-4e6a-12c6d");
+		// romPaths.add("D:/Users/xiaolu/Firmware/Android/Vivo/PD2364_15_AP3A.240905.015.A2_compiler250220193957");
+		// romPaths.add("D:/Users/xiaolu/Firmware/Android/Xiaomi/vermeer_AQ3A.240912.001_OS2.0.5.0.VNKCNXM");
 	}
 
 	@Override
@@ -111,9 +111,7 @@ public class SystemService implements LibraryEntry {
 			BufferedReader br = new BufferedReader(new FileReader(accessibleServiceListFile));
 			Stream<String> lines = br.lines();
 			List<String> result = new ArrayList<>();
-			lines.forEach(s -> {
-				result.add(s);
-			});
+			lines.forEach(result::add);
 			br.close();
 			return result;
 		} catch (IOException e) {
@@ -132,19 +130,18 @@ public class SystemService implements LibraryEntry {
 			if (isAidlClass(cls)) {
 				System.out.println(cls.getFullName());
 				String outputPath;
-				if (isServiceManagerAidl(cls, serviceList)) {
+				String service = isServiceManagerAidl(cls, serviceList);
+				if (service != null) {
 					outputPath = binderServiceAidlPath;
 					++binderServiceAidlCount;
-					if (isAccessibleAidl(cls, serviceList, accessibleServices)) {
+					if (isAccessibleService(service, accessibleServices)) {
 						writeToFile(cls, new File(romPath, accessibleAidlPath), true);
 					}
 				} else {
 					outputPath = binderAnonymousAidlPath;
 					++binderAnonymousAidlCount;
 				}
-				if (outputPath != null) {
-					writeToFile(cls, new File(romPath, outputPath), true);
-				}
+				writeToFile(cls, new File(romPath, outputPath), true);
 			}
 		}
 
@@ -179,49 +176,35 @@ public class SystemService implements LibraryEntry {
 		return false;
 	}
 
-	private String getAllAidlMethodString(JavaClass cls) {
-		StringBuilder dump = new StringBuilder();
-		for (JavaMethod mth : cls.getMethods()) {
-			MethodNode methodNode = mth.getMethodNode();
-			dump.append(methodNode.toString());
-			dump.append('\n');
-		}
-		return dump.toString();
-	}
-
-	private boolean isServiceManagerAidl(JavaClass cls, List<String> serviceList) {
+	private String isServiceManagerAidl(JavaClass cls, List<String> serviceList) {
 		if (serviceList == null) {
-			return false;
+			return null;
 		}
 		String fullName = cls.getFullName();
 		for (String service : serviceList) {
 			if (service.contains(fullName)) {
+				return service;
+			}
+		}
+		return null;
+	}
+
+	private boolean isAccessibleService(String service, List<String> accessibleServices) {
+		if (accessibleServices == null) {
+			return false;
+		}
+		for (String serviceName : accessibleServices) {
+			if (service.contains(serviceName + ":")) {
 				return true;
 			}
 		}
 		return false;
 	}
 
-	private boolean isAccessibleAidl(JavaClass cls, List<String> serviceList, List<String> accessibleServices) {
-		if (accessibleServices == null) {
-			return false;
-		}
-		String fullName = cls.getFullName();
-		String serviceLine = null;
-		for (String service : serviceList) {
-			if (service.contains(fullName)) {
-				serviceLine = service;
-				break;
-			}
-		}
-		if (serviceLine != null) {
-			for (String service : accessibleServices) {
-				if (serviceLine.contains(service + ":")) {
-					return true;
-				}
-			}
-		}
-		return false;
+	private String getAidlMethodString(JavaMethod method) {
+		MethodNode methodNode = method.getMethodNode();
+		System.out.println(methodNode.getCodeStr());
+		return methodNode.toString();
 	}
 
 	private void writeToFile(JavaClass cls, File outputFile, boolean append) {
@@ -229,8 +212,10 @@ public class SystemService implements LibraryEntry {
 			FileWriter fw = new FileWriter(outputFile, append);
 			fw.write(cls.getFullName());
 			fw.write('\n');
-			fw.write(getAllAidlMethodString(cls));
-			fw.write('\n');
+			for (JavaMethod mth : cls.getMethods()) {
+				fw.write(getAidlMethodString(mth));
+				fw.write('\n');
+			}
 			fw.flush();
 			fw.close();
 		} catch (IOException e) {
