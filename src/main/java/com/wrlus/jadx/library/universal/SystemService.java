@@ -14,7 +14,10 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public class SystemService implements LibraryEntry {
@@ -25,6 +28,10 @@ public class SystemService implements LibraryEntry {
 	private static final String accessibleAidlPath = "/accessible_aidl.txt";
 	private static final String binderServiceAidlPath = "/binder_service_aidl.txt";
 	private static final String binderAnonymousAidlPath = "/binder_anonymous_aidl.txt";
+	private static final String AIDL_DEFAULT = "aidl_default";
+	private static final String AIDL_STUB = "aidl_stub";
+	private static final String AIDL_STUB_PROXY = "aidl_stub_proxy";
+
 	private static int binderServiceAidlCount = 0;
 	private static int binderAnonymousAidlCount = 0;
 
@@ -127,53 +134,58 @@ public class SystemService implements LibraryEntry {
 		jadx.load();
 
 		for (JavaClass cls : jadx.getClassesWithInners()) {
-			if (isAidlClass(cls)) {
-				System.out.println(cls.getFullName());
+			Map<String, JavaClass> extracted = extractAidlSubclasses(cls);
+			if (isAidlClass(extracted)) {
+				String writeableStr = getAidlWriteableString(cls, extracted);
+				System.out.println(writeableStr);
+
 				String outputPath;
 				String service = isServiceManagerAidl(cls, serviceList);
 				if (service != null) {
 					outputPath = binderServiceAidlPath;
 					++binderServiceAidlCount;
 					if (isAccessibleService(service, accessibleServices)) {
-						writeToFile(cls, new File(romPath, accessibleAidlPath), true);
+						writeToFile(writeableStr, new File(romPath, accessibleAidlPath), true);
 					}
 				} else {
 					outputPath = binderAnonymousAidlPath;
 					++binderAnonymousAidlCount;
 				}
-				writeToFile(cls, new File(romPath, outputPath), true);
+				writeToFile(writeableStr, new File(romPath, outputPath), true);
 			}
 		}
 
 		jadx.close();
 	}
 
-	private boolean isAidlClass(JavaClass cls) {
-		boolean hasDefault = false;
-		JavaClass stubCls = null;
+	private Map<String, JavaClass> extractAidlSubclasses(JavaClass cls) {
+		Map<String, JavaClass> resultMap = new HashMap<>();
 		List<JavaClass> innerClasses = cls.getInnerClasses();
 		for (JavaClass innerClass : innerClasses) {
 			if (innerClass.getName().equals("Default")) {
-				hasDefault = true;
+				resultMap.put(AIDL_DEFAULT, innerClass);
 			} else if (innerClass.getName().equals("Stub")) {
-				stubCls = innerClass;
+				resultMap.put(AIDL_STUB, innerClass);
 			}
-			if (hasDefault && stubCls != null) {
+			if (resultMap.containsKey(AIDL_DEFAULT) && resultMap.containsKey(AIDL_STUB))
 				break;
-			}
 		}
-		if (hasDefault && stubCls != null) {
-			JavaClass proxyCls = null;
-			List<JavaClass> stubInnerClasses = stubCls.getInnerClasses();
+		if (resultMap.containsKey(AIDL_DEFAULT) && resultMap.containsKey(AIDL_STUB)) {
+			List<JavaClass> stubInnerClasses = resultMap.get(AIDL_STUB).getInnerClasses();
 			for (JavaClass innerClass : stubInnerClasses) {
 				if (innerClass.getName().equals("Proxy")) {
-					proxyCls = innerClass;
+					resultMap.put(AIDL_STUB_PROXY, innerClass);
 					break;
 				}
 			}
-			return proxyCls != null;
 		}
-		return false;
+		return resultMap;
+	}
+
+	private boolean isAidlClass(Map<String, JavaClass> extracted) {
+		return extracted.containsKey(AIDL_DEFAULT) &&
+				extracted.containsKey(AIDL_STUB) &&
+				extracted.containsKey(AIDL_STUB_PROXY);
 	}
 
 	private String isServiceManagerAidl(JavaClass cls, List<String> serviceList) {
@@ -201,25 +213,53 @@ public class SystemService implements LibraryEntry {
 		return false;
 	}
 
-	private String getAidlMethodString(JavaMethod method) {
-		MethodNode methodNode = method.getMethodNode();
-		System.out.println(methodNode.getCodeStr());
-		return methodNode.toString();
+	private String getAidlWriteableString(JavaClass cls, Map<String, JavaClass> extracted) {
+		StringBuilder sb = new StringBuilder();
+		sb.append(cls.getFullName());
+		sb.append('\n');
+		List<String> aidlMethodList = new ArrayList<>();
+		for (JavaMethod mth : cls.getMethods()) {
+			aidlMethodList.add(mth.getName());
+		}
+		for (JavaMethod mth : extracted.get(AIDL_DEFAULT).getMethods()) {
+			if (aidlMethodList.contains(mth.getName())) {
+				sb.append(getAidlMethodString(mth));
+				sb.append('\n');
+			}
+		}
+		sb.append('\n');
+		return sb.toString();
 	}
 
-	private void writeToFile(JavaClass cls, File outputFile, boolean append) {
+	private void writeToFile(String writeableStr, File outputFile, boolean append) {
 		try {
 			FileWriter fw = new FileWriter(outputFile, append);
-			fw.write(cls.getFullName());
-			fw.write('\n');
-			for (JavaMethod mth : cls.getMethods()) {
-				fw.write(getAidlMethodString(mth));
-				fw.write('\n');
-			}
+			fw.write(writeableStr);
 			fw.flush();
 			fw.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private String getAidlMethodString(JavaMethod method) {
+		MethodNode methodNode = method.getMethodNode();
+		return beautyMethodCodeStr(methodNode.getCodeStr());
+	}
+
+	private String beautyMethodCodeStr(String codeStr) {
+		String beautyCodeStr = "";
+		String[] lines = codeStr.split("\n");
+		for (String line : lines) {
+			if (line.contains("(") && line.contains(")")) {
+				beautyCodeStr = line;
+			}
+		}
+		beautyCodeStr = beautyCodeStr.replace("throws RemoteException", "");
+		beautyCodeStr = beautyCodeStr.replace("{", "");
+		beautyCodeStr = beautyCodeStr.trim();
+		beautyCodeStr = beautyCodeStr + ";";
+		System.out.println(beautyCodeStr);
+		return beautyCodeStr;
 	}
 }
