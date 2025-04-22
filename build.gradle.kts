@@ -11,21 +11,12 @@ plugins {
 }
 
 dependencies {
-	implementation("io.github.skylot:jadx-core:1.5.1") {
-        isChanging = true
-    }
-	implementation("io.github.skylot:jadx-dex-input:1.5.1") {
-		isChanging = true
-	}
-	implementation("io.github.skylot:jadx-java-input:1.5.1") {
-		isChanging = true
-	}
-	implementation("io.github.skylot:jadx-java-convert:1.5.1") {
-		isChanging = true
-	}
-	implementation("io.github.skylot:jadx-smali-input:1.5.1") {
-		isChanging = true
-	}
+	implementation("io.github.skylot:jadx-core:1.5.1")
+	implementation("io.github.skylot:jadx-dex-input:1.5.1")
+	implementation("io.github.skylot:jadx-java-input:1.5.1")
+	implementation("io.github.skylot:jadx-java-convert:1.5.1")
+	implementation("io.github.skylot:jadx-smali-input:1.5.1")
+	implementation("com.google.code.gson:gson:2.13.0")
 }
 
 repositories {
