@@ -24,11 +24,11 @@ import java.util.stream.Stream;
 
 public class RomProcessor {
 	private final String romPath;
-	private final Decompilers decompilers;
+	private final Decompiler decompiler;
 
-	public final List<String> serviceList;
-	public final List<String> accessibleServiceList;
-	public final List<AidlClass> allAidlClassList;
+	private final List<String> serviceList;
+	private final List<String> accessibleServiceList;
+	private final List<AidlClass> aidlClassList;
 
 	// Package names
 	private static final String PKG_ANDROID = "android";
@@ -42,22 +42,36 @@ public class RomProcessor {
 	private static final String BINDER_SERVICE_AIDL_PATH = "/binder_service_aidl.json";
 	private static final String BINDER_ANONYMOUS_AIDL_PATH = "/binder_anonymous_aidl.json";
 	private static final String AIDL_CODE_MD_PATH = "/aidl_code.md";
+	private static final String AIDL_CODE_PATH = "/aidl_code.json";
 
 	public RomProcessor(String romPath) {
 		this.romPath = romPath;
-		decompilers = new Decompilers();
+		decompiler = new Decompiler();
 		serviceList = new ArrayList<>();
 		accessibleServiceList = new ArrayList<>();
-		allAidlClassList = new ArrayList<>();
+		aidlClassList = new ArrayList<>();
 	}
 
-	public class Decompilers {
+	public class Decompiler {
 		private JadxDecompiler androidFramework;
 		private final Map<String, JadxDecompiler> packages;
 
-		public Decompilers() {
+		public Decompiler() {
 			androidFramework = null;
 			packages = new HashMap<>();
+		}
+
+		public void initFramework() {
+			initPackage(PKG_ANDROID);
+		}
+
+		public JadxDecompiler getFramework() {
+			if (androidFramework != null) {
+				return androidFramework;
+			} else {
+				System.err.println("JadxDecompiler not initialize, please call initFramework first");
+				return null;
+			}
 		}
 
 		public void initPackage(String packageName) {
@@ -72,6 +86,15 @@ public class RomProcessor {
 			}
 		}
 
+		public JadxDecompiler getPackage(String packageName) {
+			if (packages.containsKey(packageName)) {
+				return packages.get(packageName);
+			} else {
+				System.err.println("JadxDecompiler not initialize, please call initPackage first");
+				return null;
+			}
+		}
+
 		private JadxDecompiler createJadxDecompiler(String packageName) {
 			File packageDir = new File(new File(romPath, PACKAGES_PATH), packageName);
 			File[] dexFiles = packageDir.listFiles();
@@ -83,14 +106,6 @@ public class RomProcessor {
 			jadxArgs.setInputFiles(Arrays.asList(dexFiles));
 			return new JadxDecompiler(jadxArgs);
 		}
-	}
-
-	public void initAndroidFramework() {
-		decompilers.initPackage(PKG_ANDROID);
-	}
-
-	public void initPackage(String packageName) {
-		decompilers.initPackage(packageName);
 	}
 
 	public void initServiceList() {
@@ -132,8 +147,8 @@ public class RomProcessor {
 	}
 
 	public void searchAidlDefinition() {
-		allAidlClassList.clear();
-		for (JavaClass cls : decompilers.androidFramework.getClassesWithInners()) {
+		aidlClassList.clear();
+		for (JavaClass cls : decompiler.androidFramework.getClassesWithInners()) {
 			AidlClass aidlClass = new AidlClass(cls);
 			aidlClass.extractInner();
 
@@ -142,14 +157,14 @@ public class RomProcessor {
 				aidlClass.type = service != null ? AidlClass.Type.BINDER : AidlClass.Type.ANONYMOUS;
 				aidlClass.accessible = isAccessibleService(service);
 				aidlClass.initAidlMethodDefinition();
-				allAidlClassList.add(aidlClass);
+				aidlClassList.add(aidlClass);
 			}
 		}
 	}
 
 	public void searchAidlImpl() {
 		List<JavaClassWithSuper> extendsStubClasses = getExtendsStubClasses();
-		for (AidlClass aidlClass : allAidlClassList) {
+		for (AidlClass aidlClass : aidlClassList) {
 			aidlClass.initAidlMethodImpl(extendsStubClasses);
 		}
 	}
@@ -157,7 +172,7 @@ public class RomProcessor {
 	// Get all classes which extends class end with `$Stub`.
 	private List<JavaClassWithSuper> getExtendsStubClasses() {
 		final List<JavaClassWithSuper> extendsStubClasses = new ArrayList<>();
-		for (JavaClass cls : decompilers.androidFramework.getClassesWithInners()) {
+		for (JavaClass cls : decompiler.androidFramework.getClassesWithInners()) {
 			ClassNode classNode = cls.getClassNode();
 			if (classNode.getSuperClass() == null) {
 				continue;
@@ -207,7 +222,7 @@ public class RomProcessor {
 
 			binderServiceAidlWriter.beginArray();
 			binderAnonymousAidlWriter.beginArray();
-			for (AidlClass aidlClass : allAidlClassList) {
+			for (AidlClass aidlClass : aidlClassList) {
 				if (aidlClass.type == AidlClass.Type.BINDER) {
 					binderServiceAidlWriter.jsonValue(gson.toJson(aidlClass));
 					binderServiceAidlWriter.flush();
@@ -225,14 +240,14 @@ public class RomProcessor {
 		}
 	}
 
-	public void dumpAidlCodeToFile() {
+	public void dumpAidlCodeToMarkdown() {
 		try {
 			FileWriter writer = new FileWriter(new File(romPath, AIDL_CODE_MD_PATH));
 			writer.write("# AIDL Code");
 			writer.write('\n');
 			writer.write("* ROM Path: " + romPath);
 			writer.write('\n');
-			for (AidlClass aidlClass : allAidlClassList) {
+			for (AidlClass aidlClass : aidlClassList) {
 				if (aidlClass.type == AidlClass.Type.BINDER) {
 					writer.write("## " + aidlClass.interfaceClassName);
 					writer.write('\n');
@@ -260,7 +275,57 @@ public class RomProcessor {
 		}
 	}
 
+	public void dumpAidlCodeToFile() {
+		try {
+			JsonWriter writer = new JsonWriter(
+					new FileWriter(new File(romPath, AIDL_CODE_PATH)));
+			writer.beginArray();
+			for (AidlClass aidlClass : aidlClassList) {
+				if (aidlClass.type == AidlClass.Type.BINDER && aidlClass.accessible) {
+					writer.beginObject();
+					writer.name("interfaceClass").value(aidlClass.interfaceClassName);
+					writer.name("implClass").value(aidlClass.implClassName);
+					writer.name("type").value(aidlClass.type.name());
+					writer.name("accessible").value(aidlClass.accessible);
+					writer.name("methods").beginArray();
+					for (AidlMethod aidlMethod : aidlClass.methods) {
+						if (aidlMethod.code != null && !aidlMethod.code.contains
+								("throw new UnsupportedOperationException(\"Method not decompiled:")) {
+							writer.beginObject();
+							writer.name("fullDefinition").value(aidlMethod.fullDefinition);
+							writer.name("code").value(aidlMethod.code);
+							writer.endObject();
+						}
+					}
+					writer.endArray();
+					writer.endObject();
+				}
+			}
+			writer.endArray();
+			writer.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+	}
+
 	public String getRomPath() {
 		return romPath;
+	}
+
+	public Decompiler getDecompiler() {
+		return decompiler;
+	}
+
+	public List<String> getServiceList() {
+		return serviceList;
+	}
+
+	public List<String> getAccessibleServiceList() {
+		return accessibleServiceList;
+	}
+
+	public List<AidlClass> getAidlClassList() {
+		return aidlClassList;
 	}
 }

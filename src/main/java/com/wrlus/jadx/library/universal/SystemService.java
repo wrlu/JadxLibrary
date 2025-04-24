@@ -9,12 +9,12 @@ public class SystemService implements LibraryEntry {
 	private static final List<String> romPaths = new ArrayList<>();
 
 	static {
-		 // romPaths.add("D:/Users/xiaolu/Firmware/Android/Google/shiba_beta-bp22.250221.015");
-		 romPaths.add("D:/Users/xiaolu/Firmware/Android/Huawei/BLK-AL00_104.2.0.191");
-		 romPaths.add("D:/Users/xiaolu/Firmware/Android/Honor/ELI-AN00_9.0.0.165");
-		 romPaths.add("D:/Users/xiaolu/Firmware/Android/OPPO/PJV110_15_SP1A.210812.016_U.1cfadf7_1-c6eb");
-		 romPaths.add("D:/Users/xiaolu/Firmware/Android/Vivo/PD2364_15_AP3A.240905.015.A2_compiler250220193957");
-		 romPaths.add("D:/Users/xiaolu/Firmware/Android/Xiaomi/vermeer_AQ3A.240912.001_OS2.0.102.0.VNKCNXM");
+		romPaths.add("D:/Users/xiaolu/Firmware/Android/Google/shiba_beta-bp22.250325.007");
+//		romPaths.add("D:/Users/xiaolu/Firmware/Android/Huawei/BLK-AL00_104.2.0.191");
+//		romPaths.add("D:/Users/xiaolu/Firmware/Android/Honor/ELI-AN00_9.0.0.165");
+//		romPaths.add("D:/Users/xiaolu/Firmware/Android/OPPO/PJV110_15_SP1A.210812.016_U.1cfadf7_1-c6eb");
+//		romPaths.add("D:/Users/xiaolu/Firmware/Android/Vivo/PD2364_15_AP3A.240905.015.A2_compiler250220193957");
+//		romPaths.add("D:/Users/xiaolu/Firmware/Android/Xiaomi/vermeer_AQ3A.240912.001_OS2.0.102.0.VNKCNXM");
 	}
 
 	@Override
@@ -24,6 +24,7 @@ public class SystemService implements LibraryEntry {
 			return;
 		}
 		for (String romPath : romPaths) {
+			System.out.println("Process ROM: " + romPath);
 			processRom(romPath);
 		}
 	}
@@ -34,10 +35,10 @@ public class SystemService implements LibraryEntry {
 		processor.initAccessibleServiceList();
 
 		long startTime = System.currentTimeMillis();
-		processor.initAndroidFramework();
+		processor.getDecompiler().initFramework();
 		long endTime = System.currentTimeMillis();
 		float duration = (float) (endTime - startTime) / 1000;
-		System.out.println("initAndroidFramework time cost: " + duration + " second(s)");
+		System.out.println("initFramework time cost: " + duration + " second(s)");
 
 		startTime = System.currentTimeMillis();
 		processor.searchAidlDefinition();
@@ -46,7 +47,8 @@ public class SystemService implements LibraryEntry {
 		duration = (float) (endTime - startTime) / 1000;
 		System.out.println("search aidl time cost: " + duration + " second(s)");
 
-		processor.dumpAidlToFile();
-		processor.dumpAidlCodeToFile();
+		 processor.dumpAidlToFile();
+		 processor.dumpAidlCodeToMarkdown();
+		 processor.dumpAidlCodeToFile();
 	}
 }
