@@ -42,7 +42,9 @@ public class RomProcessor {
 	private static final String BINDER_SERVICE_AIDL_PATH = "/binder_service_aidl.json";
 	private static final String BINDER_ANONYMOUS_AIDL_PATH = "/binder_anonymous_aidl.json";
 	private static final String AIDL_CODE_MD_PATH = "/aidl_code.md";
+	private static final String AIDL_CODE_ANONYMOUS_MD_PATH = "/aidl_code_anonymous.md";
 	private static final String AIDL_CODE_PATH = "/aidl_code.json";
+	private static final String AIDL_CODE_ANONYMOUS_PATH = "/aidl_code_anonymous.json";
 
 	public RomProcessor(String romPath) {
 		this.romPath = romPath;
@@ -243,10 +245,16 @@ public class RomProcessor {
 	public void dumpAidlCodeToMarkdown() {
 		try {
 			FileWriter writer = new FileWriter(new File(romPath, AIDL_CODE_MD_PATH));
+			FileWriter writer2 = new FileWriter(new File(romPath, AIDL_CODE_ANONYMOUS_MD_PATH));
 			writer.write("# AIDL Code");
 			writer.write('\n');
 			writer.write("* ROM Path: " + romPath);
 			writer.write('\n');
+
+			writer2.write("# AIDL Code");
+			writer2.write('\n');
+			writer2.write("* ROM Path: " + romPath);
+			writer2.write('\n');
 			for (AidlClass aidlClass : aidlClassList) {
 				if (aidlClass.type == AidlClass.Type.BINDER) {
 					writer.write("## " + aidlClass.interfaceClassName);
@@ -267,9 +275,29 @@ public class RomProcessor {
 						writer.write("```");
 						writer.write('\n');
 					}
+				} else if (aidlClass.type == AidlClass.Type.ANONYMOUS) {
+					writer2.write("## " + aidlClass.interfaceClassName);
+					writer2.write('\n');
+					writer2.write("* Implementation: " + aidlClass.implClassName);
+					writer2.write('\n');
+					writer2.write("* Accessible: " + aidlClass.accessible);
+					writer2.write('\n');
+					for (AidlMethod aidlMethod : aidlClass.methods) {
+						writer2.write("### " + aidlMethod.definition);
+						writer2.write('\n');
+						writer2.write("```java");
+						writer2.write('\n');
+						if (aidlMethod.code != null) {
+							writer2.write(aidlMethod.code);
+						}
+						writer2.write('\n');
+						writer2.write("```");
+						writer2.write('\n');
+					}
 				}
 			}
 			writer.close();
+			writer2.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -279,9 +307,12 @@ public class RomProcessor {
 		try {
 			JsonWriter writer = new JsonWriter(
 					new FileWriter(new File(romPath, AIDL_CODE_PATH)));
+			JsonWriter writer2 = new JsonWriter(
+					new FileWriter(new File(romPath, AIDL_CODE_ANONYMOUS_PATH)));
 			writer.beginArray();
+			writer2.beginArray();
 			for (AidlClass aidlClass : aidlClassList) {
-				if (aidlClass.type == AidlClass.Type.BINDER && aidlClass.accessible) {
+				if (aidlClass.type == AidlClass.Type.BINDER) {
 					writer.beginObject();
 					writer.name("interfaceClass").value(aidlClass.interfaceClassName);
 					writer.name("implClass").value(aidlClass.implClassName);
@@ -299,10 +330,30 @@ public class RomProcessor {
 					}
 					writer.endArray();
 					writer.endObject();
+				} else if (aidlClass.type == AidlClass.Type.ANONYMOUS) {
+					writer2.beginObject();
+					writer2.name("interfaceClass").value(aidlClass.interfaceClassName);
+					writer2.name("implClass").value(aidlClass.implClassName);
+					writer2.name("type").value(aidlClass.type.name());
+					writer2.name("accessible").value(aidlClass.accessible);
+					writer2.name("methods").beginArray();
+					for (AidlMethod aidlMethod : aidlClass.methods) {
+						if (aidlMethod.code != null && !aidlMethod.code.contains
+								("throw new UnsupportedOperationException(\"Method not decompiled:")) {
+							writer2.beginObject();
+							writer2.name("fullDefinition").value(aidlMethod.fullDefinition);
+							writer2.name("code").value(aidlMethod.code);
+							writer2.endObject();
+						}
+					}
+					writer2.endArray();
+					writer2.endObject();
 				}
 			}
 			writer.endArray();
+			writer2.endArray();
 			writer.close();
+			writer2.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
